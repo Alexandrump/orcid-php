@@ -18,10 +18,12 @@ class Oauth
     /**
      * API endpoint constants
      **/
-    const HOSTNAME  = 'orcid.org';
+    const HOSTNAME = 'orcid.org';
     const AUTHORIZE = 'oauth/authorize';
-    const TOKEN     = 'oauth/token';
-    const VERSION   = '2.0';
+    const TOKEN = 'oauth/token';
+    const VERSION = '3.0';
+    const SCOPE_AUTHENTICATE = '/authenticate';
+    const SCOPE_OPENID = 'openid';
 
     /**
      * The http tranport object
@@ -124,7 +126,7 @@ class Oauth
     /**
      * Constructs a new instance
      *
-     * @param   object  $http  a request tranport object to inject
+     * @param object $http a request tranport object to inject
      * @return  void
      * @uses    Orcid\Http\Curl
      **/
@@ -184,7 +186,7 @@ class Oauth
     /**
      * Sets the client ID for future use
      *
-     * @param   string  $id  the client id
+     * @param string $id the client id
      * @return  $this
      **/
     public function setClientId($id)
@@ -197,7 +199,7 @@ class Oauth
     /**
      * Sets the client secret for future use
      *
-     * @param   string  $secret  the client secret
+     * @param string $secret the client secret
      * @return  $this
      **/
     public function setClientSecret($secret)
@@ -215,7 +217,7 @@ class Oauth
      * is somewhat unclear, I don't think you can request more than '/authorize'
      * if you intend to use the public api.
      *
-     * @param   string  $scope  the request scope
+     * @param string $scope the request scope
      * @return  $this
      **/
     public function setScope($scope)
@@ -234,7 +236,7 @@ class Oauth
      *
      * In theory, you should set this and then verify it after it comes back.
      *
-     * @param   string  $state  the request state
+     * @param string $state the request state
      * @return  $this
      **/
     public function setState($state)
@@ -250,7 +252,7 @@ class Oauth
      * This is where the user will come back to after their interaction
      * with the ORCID login/registration page
      *
-     * @param   string  $redirectUri  the redirect uri
+     * @param string $redirectUri the redirect uri
      * @return  $this
      **/
     public function setRedirectUri($redirectUri)
@@ -267,7 +269,7 @@ class Oauth
      * that ORCID will present when the user is taken to their site for
      * authentication/registration.
      *
-     * @param   string  $email  the user's email address (not required)
+     * @param string $email the user's email address (not required)
      * @return  $this
      **/
     public function setEmail($email)
@@ -282,7 +284,7 @@ class Oauth
      *
      * Use this to pre-fill the sign in page shown to the user.
      *
-     * @param   string  $orcid  the user's ORCID iD
+     * @param string $orcid the user's ORCID iD
      * @return  $this
      **/
     public function setOrcid($orcid)
@@ -305,7 +307,7 @@ class Oauth
     /**
      * Sets the registration page family names
      *
-     * @param   string  $familyNames  the registration page family names
+     * @param string $familyNames the registration page family names
      * @return  $this
      **/
     public function setFamilyNames($familyNames)
@@ -318,7 +320,7 @@ class Oauth
     /**
      * Sets the registration page given names
      *
-     * @param   string  $givenNames  the registration page given names
+     * @param string $givenNames the registration page given names
      * @return  $this
      **/
     public function setGivenNames($givenNames)
@@ -344,7 +346,7 @@ class Oauth
     /**
      * Sets the oauth access token
      *
-     * @param   string  $token  the access token to set
+     * @param string $token the access token to set
      * @return  $this
      **/
     public function setAccessToken($token)
@@ -383,20 +385,20 @@ class Oauth
         }
 
         // Start building url (enpoint is the same for public and member APIs)
-        $url  = 'https://';
+        $url = 'https://';
         $url .= (!empty($this->environment)) ? $this->environment . '.' : '';
         $url .= self::HOSTNAME . '/' . self::AUTHORIZE;
-        $url .= '?client_id='    . $this->clientId;
-        $url .= '&scope='        . $this->scope;
+        $url .= '?client_id=' . $this->clientId;
+        $url .= '&scope=' . $this->scope;
         $url .= '&redirect_uri=' . urlencode($this->redirectUri);
-        $url .= '&response_type=code';
+        $url .= '&response_type=' . ($this->scope === self::SCOPE_OPENID ? 'token' : 'code');
 
         // Process non-required fields
-        $url .= ($this->showLogin)          ? '&show_login=true'                    : '';
-        $url .= (isset($this->state))       ? '&state=' . $this->state              : '';
+        $url .= ($this->showLogin) ? '&show_login=true' : '';
+        $url .= (isset($this->state)) ? '&state=' . $this->state : '';
         $url .= (isset($this->familyNames)) ? '&family_names=' . $this->familyNames : '';
-        $url .= (isset($this->givenNames))  ? '&given_names=' . $this->givenNames   : '';
-        $url .= (isset($this->email))       ? '&email=' . urlencode($this->email)   : '';
+        $url .= (isset($this->givenNames)) ? '&given_names=' . $this->givenNames : '';
+        $url .= (isset($this->email)) ? '&email=' . urlencode($this->email) : '';
 
         return $url;
     }
@@ -404,57 +406,66 @@ class Oauth
     /**
      * Takes the given code and requests an auth token
      *
-     * @param   string  $code  the oauth code needed to request the access token
+     * @param string $code the oauth code needed to request the access token
      * @return  $this
      * @throws  Exception
      **/
     public function authenticate($code)
     {
-        // Validate code
-        if (!$code || strlen($code) != 6) {
-            throw new Exception('Invalid authorization code');
+        if ($this->scope === self::SCOPE_AUTHENTICATE) {
+            // Validate code
+            if (!$code || strlen($code) != 6) {
+                throw new Exception('Invalid authorization code');
+            }
+
+            // Check for required items
+            if (!$this->clientId) {
+                throw new Exception('Client ID is required');
+            }
+            if (!$this->clientSecret) {
+                throw new Exception('Client secret is required');
+            }
+            if (!$this->redirectUri) {
+                throw new Exception('Redirect URI is required');
+            }
+
+            $fields = [
+                'client_id' => $this->clientId,
+                'client_secret' => $this->clientSecret,
+                'code' => $code,
+                'redirect_uri' => urlencode($this->redirectUri),
+                'grant_type' => 'authorization_code'
+            ];
+
+            $url = 'https://';
+            $url .= $this->level . '.';
+            $url .= (!empty($this->environment)) ? $this->environment . '.' : '';
+            $url .= self::HOSTNAME . '/' . self::TOKEN;
+
+            $this->http->setUrl($url)
+                ->setPostFields($fields)
+                ->setHeader(['Accept' => 'application/json']);
+
+            $data = json_decode($this->http->execute());
+
+            if (isset($data->access_token)) {
+                $this->setAccessToken($data->access_token);
+                $this->setOrcid($data->orcid);
+            } else {
+                // Seems like the response format changes on occasion...not sure what's going on there?
+                $error = (isset($data->error_description)) ? $data->error_description : $data->{'error-desc'}->value;
+
+                throw new Exception($error);
+            }
+
+            return $this;
+        } else if ($this->scope === self::SCOPE_OPENID) {
+            $decodedJson = json_decode($code, true);
+            if (isset($code['access_token'])) {
+                $this->setAccessToken($code['access_token']);
+            }
+            return $this;
         }
-
-        // Check for required items
-        if (!$this->clientId) {
-            throw new Exception('Client ID is required');
-        }
-        if (!$this->clientSecret) {
-            throw new Exception('Client secret is required');
-        }
-        if (!$this->redirectUri) {
-            throw new Exception('Redirect URI is required');
-        }
-
-        $fields = [
-            'client_id'     => $this->clientId,
-            'client_secret' => $this->clientSecret,
-            'code'          => $code,
-            'redirect_uri'  => urlencode($this->redirectUri),
-            'grant_type'    => 'authorization_code'
-        ];
-
-        $url  = 'https://';
-        $url .= $this->level . '.';
-        $url .= (!empty($this->environment)) ? $this->environment . '.' : '';
-        $url .= self::HOSTNAME . '/' . self::TOKEN;
-
-        $this->http->setUrl($url)
-                   ->setPostFields($fields)
-                   ->setHeader(['Accept' => 'application/json']);
-
-        $data = json_decode($this->http->execute());
-
-        if (isset($data->access_token)) {
-            $this->setAccessToken($data->access_token);
-            $this->setOrcid($data->orcid);
-        } else {
-            // Seems like the response format changes on occasion...not sure what's going on there?
-            $error = (isset($data->error_description)) ? $data->error_description : $data->{'error-desc'}->value;
-
-            throw new Exception($error);
-        }
-
         return $this;
     }
 
@@ -475,7 +486,7 @@ class Oauth
      * But, in theory, you could call this without oauth and pass in a ORCID iD,
      * assuming you use the public API endpoint.
      *
-     * @param   string  $orcid  the orcid to look up, if not already set as class prop
+     * @param string $orcid the orcid to look up, if not already set as class prop
      * @return  object
      * @throws  Exception
      **/
@@ -490,7 +501,7 @@ class Oauth
             }
 
             $this->http->setHeader([
-                'Content-Type'  => 'application/vnd.orcid+json',
+                'Content-Type' => 'application/vnd.orcid+json',
                 'Authorization' => 'Bearer ' . $this->getAccessToken()
             ]);
         } else {
@@ -503,13 +514,13 @@ class Oauth
     /**
      * Creates the qualified api endpoint for retrieving the desired data
      *
-     * @param   string  $endpoint  the shortname of the endpoint
-     * @param   string  $orcid     the orcid to look up, if not already specified
+     * @param string $endpoint the shortname of the endpoint
+     * @param string $orcid the orcid to look up, if not already specified
      * @return  string
      **/
     private function getApiEndpoint($endpoint, $orcid = null)
     {
-        $url  = 'https://';
+        $url = 'https://';
         $url .= $this->level . '.';
         $url .= (!empty($this->environment)) ? $this->environment . '.' : '';
         $url .= self::HOSTNAME;

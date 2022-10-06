@@ -29,7 +29,7 @@ class Profile
     /**
      * Constructs object instance
      *
-     * @param   object  $oauth  the oauth object used for making calls to orcid
+     * @param object $oauth the oauth object used for making calls to orcid
      * @return  void
      **/
     public function __construct($oauth = null)
@@ -90,7 +90,7 @@ class Profile
                 if (is_array($person->emails->email) && isset($person->emails->email[0])) {
                     $email = $person->emails->email[0]->email;
 
-                    foreach($person->emails->email as $em) {
+                    foreach ($person->emails->email as $em) {
                         if ($em->primary) {
                             $email = $em->email;
                         }
@@ -117,24 +117,21 @@ class Profile
         // https://members.orcid.org/api/tutorial/reading-xml#names
 
 
-	if ( isset($details->{'given-names'}) || isset($details->{'family-name'}) )
-	{
-		
-		if ( isset($details->{'given-names'}) )
-		{
-			$fullname = $details->{'given-names'}->value;
-		}
+        if (isset($details->{'given-names'}) || isset($details->{'family-name'})) {
 
-		if ( isset($details->{'family-name'}) )
-		{
-			$fullname .= ' ' . $details->{'family-name'}->value;
-		}
+            if (isset($details->{'given-names'})) {
+                $fullname = $details->{'given-names'}->value;
+            }
 
-		$fullname = trim($fullname);
+            if (isset($details->{'family-name'})) {
+                $fullname .= ' ' . $details->{'family-name'}->value;
+            }
 
-		return $fullname;
-	}
+            $fullname = trim($fullname);
 
-	return null;
+            return $fullname;
+        }
+
+        return null;
     }
 }
