@@ -1,5 +1,5 @@
 {
-    "name": "hubzero/orcid-php",
+    "name": "alexandrump/orcid-php",
     "description": "Library for ORCID web services",
     "keywords": ["orcid", "php", "oauth"],
     "license": "MIT",
